@@ -3,7 +3,7 @@ from flask import Flask
 
 app = Flask(__name__)
 
-#app
+# Test du déclenchement automatique Jenkins via GitHub Webhook
 @app.route("/")
 @app.route("/hello/")
 def hello_world():
