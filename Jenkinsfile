@@ -67,6 +67,24 @@ pipeline {
                 }
             }
         }
+
+        
+    stage('Kubernetes Connection') {
+        steps {
+            withCredentials([
+                file(
+                    credentialsId: 'kubernetes-kubeconfig',
+                    variable: 'KUBECONFIG'
+                )
+            ]) {
+                sh '''
+                    kubectl get deployment eni-flask -n default
+                    kubectl auth can-i patch deployment/eni-flask -n default
+                '''
+            }
+        }
+    }
+
     }
 
     post {
