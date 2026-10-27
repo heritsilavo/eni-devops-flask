@@ -3,8 +3,8 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = 'eni-flask-app'
-        IMAGE_TAG = '1.0'
+        IMAGE_REPO = 'heritsilavo/eni-flask-app'
+        DOCKER_IMAGE = "heritsilavo/eni-flask-app:${BUILD_NUMBER}"
     }
 
     stages {
@@ -16,15 +16,14 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                sh 'docker build -t $IMAGE_NAME:$IMAGE_TAG .'
+                sh 'docker build -t "$DOCKER_IMAGE" .'
             }
         }
 
         stage('Python Tests') {
             steps {
                 sh '''
-                    docker run --rm \
-                        $IMAGE_NAME:$IMAGE_TAG \
+                    docker run --rm "$DOCKER_IMAGE" \
                         python -m unittest -v test
                 '''
             }
@@ -33,8 +32,7 @@ pipeline {
         stage('Docker Test') {
             steps {
                 sh '''
-                    docker run --rm \
-                        $IMAGE_NAME:$IMAGE_TAG \
+                    docker run --rm "$DOCKER_IMAGE" \
                         python -c "from app import app; c=app.test_client(); assert c.get('/').status_code == 200"
                 '''
             }
@@ -52,48 +50,55 @@ pipeline {
                     sh '''
                         set -eu
 
-                        IMAGE="$DOCKERHUB_USER/eni-flask-app:$IMAGE_TAG"
-
-                        docker tag "$IMAGE_NAME:$IMAGE_TAG" "$IMAGE"
-
                         set +x
                         echo "$DOCKERHUB_TOKEN" | docker login \
                             -u "$DOCKERHUB_USER" \
                             --password-stdin
 
-                        docker push "$IMAGE"
-                        docker logout
+                        trap 'docker logout >/dev/null 2>&1 || true' EXIT
+
+                        docker push "$DOCKER_IMAGE"
                     '''
                 }
             }
         }
 
-        
-    stage('Kubernetes Connection') {
-        steps {
-            withCredentials([
-                file(
-                    credentialsId: 'kubernetes-kubeconfig',
-                    variable: 'KUBECONFIG'
-                )
-            ]) {
-                sh '''
-                    kubectl get deployment eni-flask -n default
-                    kubectl auth can-i patch deployment/eni-flask -n default
-                '''
+        stage('Kubernetes Deploy') {
+            steps {
+                withCredentials([
+                    file(
+                        credentialsId: 'kubernetes-kubeconfig',
+                        variable: 'KUBECONFIG'
+                    )
+                ]) {
+                    sh '''
+                        set -eu
+
+                        kubectl set image \
+                            deployment/eni-flask \
+                            flask="$DOCKER_IMAGE" \
+                            -n default
+
+                        kubectl rollout status \
+                            deployment/eni-flask \
+                            -n default \
+                            --timeout=180s
+
+                        kubectl get deployment eni-flask \
+                            -n default
+                    '''
+                }
             }
         }
     }
 
-    }
-
     post {
         success {
-            echo 'Flask CI/CD Pipeline SUCCESS'
+            echo 'Flask CI/CD + Kubernetes Deployment SUCCESS'
         }
 
         failure {
-            echo 'Flask CI/CD Pipeline FAILED'
+            echo 'Flask CI/CD + Kubernetes Deployment FAILED'
         }
     }
 }
