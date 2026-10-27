@@ -2,6 +2,10 @@
 pipeline {
     agent any
 
+    triggers {
+        githubPush()
+    }
+
     environment {
         IMAGE_REPO = 'heritsilavo/eni-flask-app'
         DOCKER_IMAGE = "heritsilavo/eni-flask-app:${BUILD_NUMBER}"
